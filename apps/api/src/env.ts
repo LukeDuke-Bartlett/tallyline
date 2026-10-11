@@ -1,5 +1,6 @@
 import { readEnv } from "@tallyline/types";
 import { config } from "dotenv";
+import { assertProductionSecrets, DEV_JWT_SECRET } from "./lib/startup-guard.js";
 
 config({ path: new URL("../../../.env", import.meta.url) });
 
@@ -11,6 +12,13 @@ const env = (key: string, fallback?: string): string => {
   return value;
 };
 
+// production boot refuses unset/default/weak secrets (see lib/startup-guard.ts)
+assertProductionSecrets({
+  nodeEnv: process.env.NODE_ENV,
+  jwtSecret: readEnv(process.env, "JWT_SECRET"),
+  authSecretKey: readEnv(process.env, "AUTH_SECRET_KEY"),
+});
+
 export const config_ = {
   port: Number(env("API_PORT", "4000")),
   databaseUrl: env(
@@ -18,8 +26,12 @@ export const config_ = {
     "postgresql://postgres:postgres@localhost:5432/docketry",
   ),
   redisUrl: env("REDIS_URL", "redis://localhost:6380"),
-  jwtSecret: env("JWT_SECRET", "docketry-dev-secret-change-me"),
+  jwtSecret: env("JWT_SECRET", DEV_JWT_SECRET),
   rateLimitPerMin: Number(env("RATE_LIMIT_PER_MIN", "600")),
+  // unauthenticated traffic per client IP (and failed-credential attempts)
+  rateLimitAnonPerMin: Number(env("RATE_LIMIT_ANON_PER_MIN", "120")),
+  // login / bootstrap / invite-accept / OAuth start+callback per client IP
+  rateLimitAuthPerMin: Number(env("RATE_LIMIT_AUTH_PER_MIN", "30")),
   apiBaseUrl: env("API_BASE_URL", "http://localhost:4000"),
   githubAppSlug: env("GITHUB_APP_SLUG", ""),
   githubWebhookSecret: env("GITHUB_WEBHOOK_SECRET", ""),
@@ -41,8 +53,8 @@ export const config_ = {
 
   // oauth / web origins
   webUrl: env("WEB_URL", "http://localhost:3100").replace(/\/$/, ""),
-  // honors x-forwarded-for in rate limiting + logs — only set behind a
-  // real reverse proxy (spoofable otherwise)
+  // honors CF-Connecting-IP / x-forwarded-for / x-forwarded-proto — only set
+  // behind a real reverse proxy or Cloudflare (spoofable otherwise)
   trustedProxy: ["1", "true", "yes"].includes(
     env("TRUSTED_PROXY", "").toLowerCase(),
   ),
@@ -60,8 +72,14 @@ export const config_ = {
     .split(",")
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean),
-  authAutoJoinSingleWorkspace: !["0", "false", "no"].includes(
+  // default OFF: on an internet-facing install auto-join is open membership
+  authAutoJoinSingleWorkspace: ["1", "true", "yes"].includes(
     env("AUTH_AUTO_JOIN_SINGLE_WORKSPACE", "").toLowerCase(),
+  ),
+  // default OFF: only instance admins may create workspaces; 1 lets any
+  // signed-in human do so (self-host teams that want self-serve orgs)
+  allowWorkspaceCreate: ["1", "true", "yes"].includes(
+    env("TALLYLINE_ALLOW_WORKSPACE_CREATE", "").toLowerCase(),
   ),
 
   // oauth providers — empty client id = provider absent
