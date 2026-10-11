@@ -3,8 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { teams, workspaces } from "../db/schema.js";
+import { teams, workspaceMembers, workspaces } from "../db/schema.js";
 import { apiError, HttpError } from "../lib/errors.js";
+import { memberOf, requireRole } from "../services/members.js";
+import { isCookieSession } from "./auth.js";
 
 const createWorkspaceSchema = z.object({
   slug: z
@@ -34,6 +36,17 @@ const patchTeamSchema = z.object({
 
 export const workspaceRoutes = new Hono()
   .post("/workspaces", zValidator("json", createWorkspaceSchema), async (c) => {
+    // Humans mint workspaces; delegated credentials and agent keys cannot —
+    // the workspace is the security boundary an org pays for.
+    const session = c.get("session");
+    if (!isCookieSession(c) || !session) {
+      return apiError(
+        c,
+        403,
+        "FORBIDDEN",
+        "workspace creation requires a human session",
+      );
+    }
     const body = c.req.valid("json");
     const existing = await db
       .select({ id: workspaces.id })
@@ -43,12 +56,45 @@ export const workspaceRoutes = new Hono()
       return apiError(c, 409, "CONFLICT", `workspace '${body.slug}' exists`);
     }
     const [ws] = await db.insert(workspaces).values(body).returning();
+    await db.insert(workspaceMembers).values({
+      workspaceId: ws!.id,
+      userId: session.userId,
+      role: "owner",
+    });
     return c.json(ws, 201);
   })
   .get("/workspaces/:ws", async (c) => {
     const ws = await requireWorkspace(c);
     return c.json(ws);
   })
+  // declared email domains for the SSO domain-match rung (R17) — the only
+  // write path for workspaces.allowed_domains
+  .patch(
+    "/workspaces/:ws",
+    zValidator(
+      "json",
+      z.object({
+        name: z.string().min(1).max(120).optional(),
+        allowedDomains: z.array(z.string().min(1).max(253)).optional(),
+      }),
+    ),
+    async (c) => {
+      const ws = await requireWorkspace(c);
+      requireRole(c, "admin");
+      const body = c.req.valid("json");
+      const [updated] = await db
+        .update(workspaces)
+        .set({
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.allowedDomains !== undefined
+            ? { allowedDomains: body.allowedDomains.map((d) => d.trim().toLowerCase()) }
+            : {}),
+        })
+        .where(eq(workspaces.id, ws.id))
+        .returning();
+      return c.json(updated);
+    },
+  )
   .post(
     "/workspaces/:ws/teams",
     zValidator("json", createTeamSchema),
@@ -116,16 +162,38 @@ export async function findWorkspace(slug: string) {
   return ws ?? null;
 }
 
+// Per-class access matrix (KTD4):
+// - cookie sessions roam: membership in the URL workspace is the gate,
+//   sessions.workspaceId only seeds where login lands
+// - PATs/JWTs stay hard-bound to their minted workspace AND require a live
+//   membership — a removed member's token dies on the next request
+// - agent keys stay hard-bound; agents are never members (R24)
+// On success, memberRole is injected for role gates.
 export async function requireWorkspace(c: Context) {
   const ws = await findWorkspace(c.req.param("ws") ?? "");
   if (!ws) throw new HttpError(404, "NOT_FOUND", "workspace not found");
-  // Credentials are workspace-bound: a key/token/session minted in one
-  // workspace cannot act in another.
   const session = c.get("session");
   const agent = c.get("agentAuth");
-  const bound = session?.workspaceId ?? agent?.workspaceId ?? null;
-  if (bound && bound !== ws.id) {
-    throw new HttpError(403, "FORBIDDEN_WORKSPACE", "credential not scoped to this workspace");
+  if (agent) {
+    if (agent.workspaceId !== ws.id) {
+      throw new HttpError(403, "FORBIDDEN_WORKSPACE", "credential not scoped to this workspace");
+    }
+    c.set("memberRole", null);
+    return ws;
   }
-  return ws;
+  if (session) {
+    const delegated =
+      session.sessionId.startsWith("pat:") ||
+      session.sessionId.startsWith("jwt:");
+    if (delegated && session.workspaceId !== ws.id) {
+      throw new HttpError(403, "FORBIDDEN_WORKSPACE", "credential not scoped to this workspace");
+    }
+    const member = await memberOf(session.userId, ws.id);
+    if (!member) {
+      throw new HttpError(403, "FORBIDDEN_WORKSPACE", "not a member of this workspace");
+    }
+    c.set("memberRole", member.role);
+    return ws;
+  }
+  throw new HttpError(401, "UNAUTHENTICATED", "sign in or present agent credentials");
 }

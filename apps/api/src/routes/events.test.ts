@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "../index.js";
 import { closeDb, db } from "../db/client.js";
@@ -6,14 +6,21 @@ import { runMigrations } from "../db/migrate.js";
 import {
   agentKeys,
   agents,
+  authIdentities,
+  authProviders,
   comments,
   events,
-  slackLinks,
+  invites,
   issues,
   labels,
+  oauthCodes,
   sessions,
+  slackLinks,
+  teamMembers,
   teams,
+  userIdMap,
   users,
+  workspaceMembers,
   workspaces,
 } from "../db/schema.js";
 
@@ -121,6 +128,13 @@ beforeAll(async () => {
     labels,
     agentKeys,
     agents,
+    authIdentities,
+    authProviders,
+    invites,
+    oauthCodes,
+    teamMembers,
+    userIdMap,
+    workspaceMembers,
     sessions,
     users,
     teams,
@@ -137,6 +151,14 @@ afterAll(async () => {
       .from(workspaces)
       .where(eq(workspaces.slug, slug));
     if (ws) {
+      await db
+        .delete(invites)
+        .where(eq(invites.workspaceId, ws.id));
+      await db
+        .delete(users)
+        .where(
+          sql`${users.id} in (select ${workspaceMembers.userId} from ${workspaceMembers} where ${workspaceMembers.workspaceId} = ${ws.id})`,
+        );
       for (const t of [
         comments,
         events,
@@ -145,8 +167,10 @@ afterAll(async () => {
         labels,
         agentKeys,
         agents,
+        invites,
+        oauthCodes,
+        workspaceMembers,
         sessions,
-        users,
         teams,
       ] as const) {
         await db.delete(t).where(eq(t.workspaceId, ws.id));
@@ -224,13 +248,10 @@ describe("workspace events feed + SSE stream", () => {
   });
 
   it("scopes the feed to the workspace", async () => {
-    const other = await req(`/v1/workspaces`, {
-      method: "POST",
-      body: JSON.stringify({ slug: SLUG2, name: "Other WS" }),
-    });
-    expect(other.status).toBe(201);
-    // credentials are workspace-bound — this session belongs to SLUG and
-    // cannot read another workspace's feed even though it exists
+    // created directly (not via POST /workspaces, which would make the
+    // caller an owner-member) — a non-member workspace must 403 even
+    // though roaming cookie sessions exist (U2)
+    await db.insert(workspaces).values({ slug: SLUG2, name: "Other WS" });
     const res = await req(`/v1/workspaces/${SLUG2}/events`);
     expect(res.status).toBe(403);
     expect(res.body.error!.code).toBe("FORBIDDEN_WORKSPACE");

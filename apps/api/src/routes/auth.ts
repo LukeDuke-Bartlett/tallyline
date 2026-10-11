@@ -1,11 +1,18 @@
 import { getCookie, setCookie } from "hono/cookie";
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono, type Context, type Next } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { teams, users, workspaces } from "../db/schema.js";
+import {
+  sessions,
+  teams,
+  users,
+  workspaceMembers,
+  workspaces,
+} from "../db/schema.js";
 import { apiError } from "../lib/errors.js";
+import { config_ } from "../env.js";
 import {
   createSession,
   destroySession,
@@ -14,6 +21,12 @@ import {
   sessionFromToken,
   verifyPassword,
 } from "../services/auth.js";
+import {
+  isInstanceAdmin,
+  membershipsFor,
+  memberOf,
+  type MemberRole,
+} from "../services/members.js";
 import { agentFromKey, type AgentAuth } from "../services/agents.js";
 import {
   ACCESS_TOKEN_TTL_S,
@@ -50,6 +63,16 @@ export const authRoutes = new Hono()
     "/bootstrap",
     zValidator("json", bootstrapSchema),
     async (c) => {
+      if (config_.authDisablePassword) {
+        // first-run under password-disabled goes through OAuth's
+        // pending-bootstrap exchange path (R11), not this endpoint
+        return apiError(
+          c,
+          403,
+          "BOOTSTRAP_CLOSED",
+          "password auth is disabled — bootstrap via your first SSO login",
+        );
+      }
       const existing = await db.select({ id: workspaces.id }).from(workspaces);
       if (existing.length > 0) {
         return apiError(
@@ -61,26 +84,50 @@ export const authRoutes = new Hono()
       }
       const body = c.req.valid("json");
 
-      const [ws] = await db
-        .insert(workspaces)
-        .values({ slug: body.workspaceSlug, name: body.workspaceName })
-        .returning();
-      await db.insert(teams).values({
-        workspaceId: ws!.id,
-        key: body.teamKey,
-        name: "Docketry",
-      });
-      const [user] = await db
-        .insert(users)
-        .values({
+      // serialized with the OAuth pending-bootstrap path: the xact-level
+      // advisory lock makes the zero-workspace check + create atomic, so a
+      // second concurrent bootstrap sees the row instead of racing past it
+      const boot = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext('docketry-bootstrap')::bigint)`,
+        );
+        const again = await tx.select({ id: workspaces.id }).from(workspaces);
+        if (again.length > 0) return null;
+        const [ws] = await tx
+          .insert(workspaces)
+          .values({ slug: body.workspaceSlug, name: body.workspaceName })
+          .returning();
+        await tx.insert(teams).values({
           workspaceId: ws!.id,
-          email: body.email,
-          name: body.name,
-          passwordHash: hashPassword(body.password),
-        })
-        .returning();
+          key: body.teamKey,
+          name: "Docketry",
+        });
+        const [user] = await tx
+          .insert(users)
+          .values({
+            email: body.email.trim().toLowerCase(),
+            name: body.name,
+            passwordHash: hashPassword(body.password),
+          })
+          .returning();
+        await tx.insert(workspaceMembers).values({
+          workspaceId: ws!.id,
+          userId: user!.id,
+          role: "owner",
+        });
+        return { ws: ws!, user: user! };
+      });
+      if (!boot) {
+        return apiError(
+          c,
+          403,
+          "BOOTSTRAP_CLOSED",
+          "workspace already exists — use login or an invite",
+        );
+      }
+      const { ws, user } = boot;
 
-      const token = await createSession(user!.id, ws!.id);
+      const token = await createSession(user.id, ws.id);
       setSessionCookie(c, token);
       return c.json(
         {
@@ -92,11 +139,19 @@ export const authRoutes = new Hono()
     },
   )
   .post("/login", zValidator("json", loginSchema), async (c) => {
+    if (config_.authDisablePassword) {
+      return apiError(
+        c,
+        403,
+        "PASSWORD_DISABLED",
+        "password auth is disabled on this instance",
+      );
+    }
     const body = c.req.valid("json");
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, body.email));
+      .where(sql`lower(btrim(${users.email})) = lower(btrim(${body.email}))`);
     if (
       !user ||
       !user.passwordHash ||
@@ -104,11 +159,27 @@ export const authRoutes = new Hono()
     ) {
       return apiError(c, 401, "BAD_CREDENTIALS", "invalid email or password");
     }
-    const token = await createSession(user.id, user.workspaceId);
+    // session binds to the user's earliest membership; zero-membership
+    // users have nowhere to land (U2 refines resolution)
+    const [member] = await db
+      .select({ workspaceId: workspaceMembers.workspaceId })
+      .from(workspaceMembers)
+      .where(eq(workspaceMembers.userId, user.id))
+      .orderBy(workspaceMembers.createdAt)
+      .limit(1);
+    if (!member) {
+      return apiError(
+        c,
+        403,
+        "NO_WORKSPACE",
+        "account has no workspace membership",
+      );
+    }
+    const token = await createSession(user.id, member.workspaceId);
     setSessionCookie(c, token);
     return c.json({
       user: { id: user.id, email: user.email, name: user.name },
-      workspaceId: user.workspaceId,
+      workspaceId: member.workspaceId,
     });
   })
   .post("/logout", async (c) => {
@@ -148,10 +219,15 @@ export const authRoutes = new Hono()
     if (bearerToken && !bearerToken.startsWith("dok_")) {
       const claims = await verifyAccessToken(bearerToken);
       if (!claims) return apiError(c, 401, "UNAUTHENTICATED", "bad jwt");
+      const [ws] = await db
+        .select({ slug: workspaces.slug })
+        .from(workspaces)
+        .where(eq(workspaces.id, claims.ws));
       return c.json({
         type: "user",
         userId: claims.sub,
         workspaceId: claims.ws,
+        workspaceSlug: ws?.slug ?? null,
         scopes: claims.scopes,
       });
     }
@@ -159,8 +235,55 @@ export const authRoutes = new Hono()
     if (!token) return apiError(c, 401, "UNAUTHENTICATED", "no session");
     const session = await sessionFromToken(token);
     if (!session) return apiError(c, 401, "UNAUTHENTICATED", "session expired");
-    return c.json(session);
+    const memberships = await membershipsFor(session.userId);
+    return c.json({
+      type: "user",
+      userId: session.userId,
+      name: session.name,
+      email: session.email,
+      workspaceSlug: session.workspaceSlug,
+      memberships,
+      activeWorkspaceSlug: session.workspaceSlug,
+      isInstanceAdmin: await isInstanceAdmin({
+        id: session.userId,
+        email: session.email,
+      }),
+    });
   })
+  // Re-bind a roaming cookie session's active workspace — the switch the
+  // workspace picker calls. Cookie sessions only: PATs/JWTs and agent keys
+  // are minted bound and cannot re-bind.
+  .post(
+    "/session",
+    zValidator("json", z.object({ workspaceSlug: z.string().min(1) })),
+    async (c) => {
+      const token = getCookie(c, SESSION_COOKIE);
+      if (!token) return apiError(c, 401, "UNAUTHENTICATED", "no session");
+      const session = await sessionFromToken(token);
+      if (!session) return apiError(c, 401, "UNAUTHENTICATED", "session expired");
+      const slug = c.req.valid("json").workspaceSlug;
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.slug, slug));
+      if (!ws) return apiError(c, 404, "NOT_FOUND", "workspace not found");
+      const member = await memberOf(session.userId, ws.id);
+      if (!member) {
+        return apiError(
+          c,
+          403,
+          "FORBIDDEN_WORKSPACE",
+          "not a member of this workspace",
+        );
+      }
+      await db
+        .update(sessions)
+        .set({ workspaceId: ws.id })
+        .where(eq(sessions.id, session.sessionId));
+      const memberships = await membershipsFor(session.userId);
+      return c.json({ workspaceSlug: ws.slug, memberships });
+    },
+  )
   // Exchange a session cookie for a short-lived access JWT — the
   // programmatic-auth path for human users (agents mint dok_agt_ keys instead).
   .post("/token", async (c) => {
@@ -201,9 +324,14 @@ declare module "hono" {
   interface ContextVariableMap {
     session: Session | null;
     agentAuth: AgentAuth | null;
+    // role in the URL-resolved workspace, injected by requireWorkspace;
+    // null for agent credentials and unbound routes
+    memberRole: MemberRole | null;
     // scopes carried by the presented credential (agent key, PAT, JWT);
     // null for cookie sessions, which always act with full user rights
     tokenScopes: string[] | null;
+    // set by provider-admin middleware after the instance-admin check
+    instanceAdminUserId: string;
   }
 }
 

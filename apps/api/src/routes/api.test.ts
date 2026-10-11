@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "../index.js";
 import { closeDb, db } from "../db/client.js";
@@ -6,20 +6,27 @@ import { runMigrations } from "../db/migrate.js";
 import {
   agentKeys,
   agents,
+  authIdentities,
+  authProviders,
   comments,
-  cycleVelocity,
   cycles,
+  cycleVelocity,
   events,
-  slackLinks,
+  invites,
   issues,
   labels,
+  oauthCodes,
   projectMilestones,
   projects,
   sessions,
+  slackLinks,
+  teamMembers,
   teams,
+  userIdMap,
   users,
   userTokens,
   views,
+  workspaceMembers,
   workspaces,
 } from "../db/schema.js";
 
@@ -86,6 +93,13 @@ beforeAll(async () => {
     cycles,
     projectMilestones,
     projects,
+    authIdentities,
+    authProviders,
+    invites,
+    oauthCodes,
+    teamMembers,
+    userIdMap,
+    workspaceMembers,
     sessions,
     users,
     teams,
@@ -102,6 +116,14 @@ afterAll(async () => {
       .from(workspaces)
       .where(eq(workspaces.slug, slug));
     if (ws) {
+      await db
+        .delete(invites)
+        .where(eq(invites.workspaceId, ws.id));
+      await db
+        .delete(users)
+        .where(
+          sql`${users.id} in (select ${workspaceMembers.userId} from ${workspaceMembers} where ${workspaceMembers.workspaceId} = ${ws.id})`,
+        );
       for (const t of [
         comments,
         events,
@@ -116,8 +138,10 @@ afterAll(async () => {
         cycles,
         projectMilestones,
         projects,
+        invites,
+        oauthCodes,
+        workspaceMembers,
         sessions,
-        users,
         teams,
       ] as const) {
         await db.delete(t).where(eq(t.workspaceId, ws.id));
@@ -241,13 +265,39 @@ describe("api routes (real postgres)", () => {
   });
 
   it("comments and exposes the event feed", async () => {
+    // agent-typed comments require an agent key — a cookie session
+    // asserting x-actor-type: agent is provenance forgery (U2)
+    const agent = await req(`/v1/workspaces/${SLUG}/agents`, {
+      method: "POST",
+      body: JSON.stringify({ name: "commenter", harness: "test" }),
+    });
+    expect(agent.status).toBe(201);
+    const minted = await req(
+      `/v1/workspaces/${SLUG}/agents/${agent.body.id}/keys`,
+      {
+        method: "POST",
+        body: JSON.stringify({ scopes: ["write"] }),
+      },
+    );
+    expect(minted.status).toBe(201);
+
+    const forged = await req(
+      `/v1/workspaces/${SLUG}/issues/ENG-1/comments`,
+      {
+        method: "POST",
+        body: JSON.stringify({ body: "should not land" }),
+        headers: { "x-actor-type": "agent" },
+      },
+    );
+    expect(forged.status).toBe(403);
+
     const c1 = await req(
       `/v1/workspaces/${SLUG}/issues/ENG-1/comments`,
       {
         method: "POST",
         body: JSON.stringify({ body: "picked this up" }),
         headers: {
-          "content-type": "application/json",
+          authorization: `Bearer ${minted.body.key}`,
           "x-actor-type": "agent",
         },
       },
