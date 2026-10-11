@@ -46,7 +46,8 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `pnpm exec next dev -p ${WEB_PORT}`,
+      // E2E_WEB_COMMAND: e.g. a prebuilt `next start` where dev HMR is unreliable
+      command: process.env.E2E_WEB_COMMAND ?? `pnpm exec next dev -p ${WEB_PORT}`,
       cwd: "../../apps/web",
       port: Number(WEB_PORT),
       env: {
