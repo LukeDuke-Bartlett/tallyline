@@ -28,6 +28,14 @@ test.afterAll(async () => {
   await api.dispose();
 });
 
+// GitHub's redirect lands on a confirm page: a GET never binds. Confirming
+// POSTs through the web tier (same-origin, JSON) to the API.
+async function confirmLink(page: Page, id: number | string, action = "install") {
+  await page.goto(`/integrations/github/callback?installation_id=${id}&setup_action=${action}`);
+  await expect(page.getByRole("heading", { name: `Link installation ${id}?` })).toBeVisible();
+  await page.getByRole("button", { name: "Link installation" }).click();
+}
+
 function watchCsp(page: Page): string[] {
   const violations: string[] = [];
   page.on("console", (m) => {
@@ -102,8 +110,12 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
   await page.getByRole("button", { name: "Connect GitHub" }).click();
   await expect(page).toHaveURL(`https://github.com/apps/${GH_APP_SLUG}/installations/new`);
 
-  // GitHub redirects to the Setup URL: the web callback forwards server-side
+  // GitHub redirects to the Setup URL: a confirm page, nothing bound on GET
   await page.goto("/integrations/github/callback?installation_id=501&setup_action=install");
+  await expect(page.getByRole("heading", { name: "Link installation 501?" })).toBeVisible();
+  const before = await api.get(`/v1/workspaces/${WS}/github/installations`);
+  expect((await before.json()).installations).toEqual([]);
+  await page.getByRole("button", { name: "Link installation" }).click();
   await expect(page).toHaveURL(/\/settings\/github\?github=connected/);
   await expect(page.getByText("GitHub installation linked")).toBeVisible();
   const installs = page.getByRole("list", { name: "Linked installations" });
@@ -120,7 +132,7 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
   await expect(repos.getByText("off")).toBeVisible();
 
   // idempotent: returning again does not duplicate
-  await page.goto("/integrations/github/callback?installation_id=501&setup_action=update");
+  await confirmLink(page, 501, "update");
   await expect(page).toHaveURL(/github=connected/);
   await expect(installs.getByRole("listitem")).toHaveCount(1);
 
@@ -145,7 +157,7 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
 });
 
 test("foreign installation id → 404 copy, nothing linked", async ({ page }) => {
-  await page.goto("/integrations/github/callback?installation_id=999999&setup_action=install");
+  await confirmLink(page, 999999);
   await expect(page).toHaveURL(/github=error&code=404/);
   await expect(
     page.getByText("That installation does not belong to this GitHub App"),
@@ -159,10 +171,12 @@ test("installation bound to another workspace → 409 copy", async ({ page }) =>
     data: { slug: OTHER_WS, name: "Other workspace" },
   });
   expect(mk.status()).toBe(201);
-  const bound = await api.get(`/v1/workspaces/${OTHER_WS}/github/setup?installation_id=502`);
+  const bound = await api.post(`/v1/workspaces/${OTHER_WS}/github/setup`, {
+    data: { installationId: 502 },
+  });
   expect(bound.status()).toBe(200);
 
-  await page.goto("/integrations/github/callback?installation_id=502&setup_action=install");
+  await confirmLink(page, 502);
   await expect(page).toHaveURL(/github=error&code=409/);
   await expect(
     page.getByText("That GitHub installation is linked to another workspace"),
@@ -181,6 +195,21 @@ test("org-member install request and malformed callback", async ({ page }) => {
   await page.goto("/integrations/github/callback?installation_id=abc");
   await expect(page).toHaveURL(/github=error&code=400/);
   await expect(page.getByText("GitHub did not send an installation")).toBeVisible();
+});
+
+test("setup POST refuses cross-site requests (CSRF)", async ({ page, request }) => {
+  await page.goto("/settings/github");
+  const base = new URL(page.url()).origin;
+  const evil = await request.post(`${base}/api/settings/github/setup`, {
+    headers: { "content-type": "application/json", origin: "https://evil.example" },
+    data: { installationId: 501 },
+  });
+  expect(evil.status()).toBe(403);
+  const noOrigin = await request.post(`${base}/api/settings/github/setup`, {
+    headers: { "content-type": "text/plain" },
+    data: JSON.stringify({ installationId: 501 }),
+  });
+  expect(noOrigin.status()).toBe(403);
 });
 
 test("callback without a session goes to login", async ({ browser }) => {

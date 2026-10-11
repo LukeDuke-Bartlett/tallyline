@@ -87,7 +87,7 @@ export function AgentsPanel({ canAdmin }: { canAdmin: boolean }) {
         <Panel
           id="new-agent"
           title="New agent identity"
-          hint="An identity is who shows up in the activity feed. Give it keys to let a tool act as it."
+          hint="An identity is who shows up in the activity feed. Give it keys to let a tool act as it. Agent keys can never approve a review or mint other credentials; only people do."
         >
           {canAdmin ? (
             <form onSubmit={create}>

@@ -92,6 +92,13 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
     },
   },
   {
+    name: "github link confirm page",
+    run: async (page) => {
+      await page.goto("/integrations/github/callback?installation_id=501&setup_action=install");
+      await expect(page.getByRole("button", { name: "Link installation" })).toBeVisible();
+    },
+  },
+  {
     name: "connected apps",
     run: async (page) => {
       await page.route("**/api/settings/oauth-grants", (r) =>
