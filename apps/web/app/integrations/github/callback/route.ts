@@ -29,12 +29,30 @@ export async function GET(req: Request) {
   const ws = jar.get(WORKSPACE_COOKIE)?.value;
   if (!session || !ws) return NextResponse.redirect(new URL("/login", req.url));
 
+  const base = `${API_URL}/v1/workspaces/${encodeURIComponent(ws)}/github/setup`;
+  const headers = { cookie: `${SESSION_COOKIE}=${session}` };
   let status: number;
   try {
-    const upstream = await upstreamFetch(
-      `${API_URL}/v1/workspaces/${encodeURIComponent(ws)}/github/setup?installation_id=${raw}`,
-      { headers: { cookie: `${SESSION_COOKIE}=${session}` }, cache: "no-store" },
-    );
+    // State-changing, so a POST (the API is moving the bind off GET). Until
+    // that lands the API answers a bare 404 (no JSON error envelope) and we
+    // fall back to the legacy GET, which still enforces the same checks.
+    let upstream = await upstreamFetch(base, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ installation_id: Number(raw) }),
+      cache: "no-store",
+    });
+    if (upstream.status === 404 || upstream.status === 405) {
+      const body = (await upstream.clone().json().catch(() => null)) as {
+        error?: { code?: string };
+      } | null;
+      if (!body?.error?.code) {
+        upstream = await upstreamFetch(`${base}?installation_id=${raw}`, {
+          headers,
+          cache: "no-store",
+        });
+      }
+    }
     status = upstream.status;
   } catch {
     status = 502;
