@@ -28,7 +28,9 @@ const VIEWPORTS = [
 ] as const;
 const THEMES = ["dark", "light"] as const;
 
-const KEY = /\b[A-Z][A-Z0-9]*-\d+\b/;
+// No \b anchors: the page header, list rows and key/title are adjacent flex
+// items, so text can read "cycleE2E-1a11y fixture issue" with no separators.
+const KEY = /[A-Z][A-Z0-9]*-\d+/;
 
 async function issueKey(page: Page): Promise<string> {
   await page.goto("/issues");
