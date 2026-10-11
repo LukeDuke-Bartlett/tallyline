@@ -59,5 +59,5 @@ export function newNonce(): string {
 export const GITHUB_MANIFEST_FORM_ORIGIN = "https://github.com";
 
 export function formActionFor(pathname: string): string[] {
-  return pathname === "/settings/github" ? [GITHUB_MANIFEST_FORM_ORIGIN] : [];
+  return pathname === "/settings/integrations" ? [GITHUB_MANIFEST_FORM_ORIGIN] : [];
 }

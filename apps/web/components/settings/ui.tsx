@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { SettingsTabs } from "@/components/settings-tabs";
 
 export const field =
   "mt-1 w-full rounded-sm border border-control bg-surface-2 px-3 py-2 text-sm text-ink outline-none focus:border-lining-strong";
@@ -14,10 +15,11 @@ export const dangerBtn =
 
 export function PageHeader({ title, meta }: { title: string; meta?: string }) {
   return (
-    <header className="flex h-12 shrink-0 items-center border-b border-lining-faint px-4">
-      <h1 className="text-sm font-semibold">{title}</h1>
+    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-lining-faint px-4">
+      <h1 className="shrink-0 text-sm font-semibold">{title}</h1>
+      <SettingsTabs />
       {meta && (
-        <span className="ml-2 font-mono text-[11px] text-ink-tertiary">{meta}</span>
+        <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-tertiary">{meta}</span>
       )}
     </header>
   );

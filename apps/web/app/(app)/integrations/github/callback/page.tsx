@@ -15,8 +15,8 @@ export default async function GithubCallbackPage({
   const action = typeof sp.setup_action === "string" ? sp.setup_action : "";
   const raw = typeof sp.installation_id === "string" ? sp.installation_id : "";
   // org member asked an owner to approve — nothing to bind yet
-  if (action === "request") redirect("/settings/github?github=requested");
-  if (!/^\d{1,15}$/.test(raw)) redirect("/settings/github?github=error&code=400");
+  if (action === "request") redirect("/settings/integrations?github=requested");
+  if (!/^\d{1,15}$/.test(raw)) redirect("/settings/integrations?github=error&code=400");
 
   const me = await api<Me>("/v1/auth/me");
   if (!me.data) redirect("/login");

@@ -23,29 +23,23 @@ const APP_PAGES = [
   "/settings/providers",
   "/settings/agents",
   "/settings/tokens",
-  "/settings/github",
+  "/settings/integrations",
 ];
 
 // Non-default states of the new settings screens (PLAN-005/006, UX-009):
 // the GitHub App not configured, a linked installation with callback errors,
 // a freshly revealed secret, and an open confirm dialog.
-const GH_MOCK_REPOS = {
-  repos: [
-    { id: "r1", fullName: "acme/web", enabled: true, installationId: 7 },
-    { id: "r2", fullName: "acme/api", enabled: false, installationId: 7 },
-  ],
-};
 const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
   {
     name: "github not configured",
     run: async (page) => {
-      await page.route("**/api/settings/github/installations", (r) =>
+      await page.route("**/api/settings/integrations/installations", (r) =>
         r.fulfill({ json: { configured: { app: false, slug: false }, installations: [] } }),
       );
-      await page.route("**/api/settings/github/manifest", (r) =>
+      await page.route("**/api/settings/integrations/manifest", (r) =>
         r.fulfill({ json: { name: "tallyline", url: "http://x.test" } }),
       );
-      await page.goto("/settings/github");
+      await page.goto("/settings/integrations");
       await page.getByRole("button", { name: "Prepare GitHub App" }).click();
       await expect(page.getByRole("button", { name: /Create GitHub App/ })).toBeVisible();
     },
@@ -53,7 +47,7 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
   {
     name: "github linked + 409 notice + unlink toast",
     run: async (page) => {
-      await page.route("**/api/settings/github/installations", (r) =>
+      await page.route("**/api/settings/integrations/installations", (r) =>
         r.fulfill({
           json: {
             configured: { app: true, slug: true },
@@ -63,9 +57,8 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
           },
         }),
       );
-      await page.route("**/api/settings/github/repos", (r) => r.fulfill({ json: GH_MOCK_REPOS }));
-      await page.goto("/settings/github?github=error&code=409");
-      await expect(page.getByRole("list", { name: "Linked repositories" })).toBeVisible();
+      await page.goto("/settings/integrations?github=error&code=409");
+      await expect(page.getByRole("list", { name: "Linked installations" })).toBeVisible();
       await page.getByRole("button", { name: "Unlink acme" }).click();
       await expect(page.getByRole("status").filter({ hasText: "Unlinked acme" })).toBeVisible();
     },
@@ -73,7 +66,7 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
   {
     name: "github connected + 404 notice, empty",
     run: async (page) => {
-      await page.goto("/settings/github?github=error&code=404");
+      await page.goto("/settings/integrations?github=error&code=404");
       await expect(page.getByText("No GitHub account is linked")).toBeVisible();
     },
   },

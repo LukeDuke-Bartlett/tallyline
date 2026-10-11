@@ -135,11 +135,11 @@ test("tokens: explicit scopes, shown once, revoke", async ({ page }) => {
 
 test("settings sub-navigation reaches every section", async ({ page }) => {
   await page.goto("/settings/members");
-  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  const nav = page.getByRole("navigation", { name: "Settings" });
   for (const [label, url] of [
     ["Agents", /\/settings\/agents$/],
     ["Tokens", /\/settings\/tokens$/],
-    ["GitHub", /\/settings\/github$/],
+    ["Integrations", /\/settings\/integrations$/],
     ["Invites", /\/settings\/invites$/],
     ["Members", /\/settings\/members$/],
   ] as const) {

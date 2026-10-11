@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   UndoToast,
@@ -7,10 +8,8 @@ import {
   Notice,
   Panel,
   errorMessage,
-  field,
   Time,
   ghostBtn,
-  labelCls,
   primaryBtn,
 } from "./ui";
 
@@ -22,12 +21,6 @@ interface Installation {
 interface Overview {
   configured: { app: boolean; slug: boolean };
   installations: Installation[];
-}
-interface Repo {
-  id: string;
-  fullName: string;
-  enabled: boolean;
-  installationId: number | null;
 }
 
 export type GithubNotice =
@@ -73,15 +66,15 @@ export function callbackErrorCopy(code: number): { title: string; body: string }
   }
 }
 
-export function GithubPanel({
+export function GithubConnect({
   canAdmin,
   notice,
 }: {
   canAdmin: boolean;
   notice: GithubNotice;
 }) {
+  const router = useRouter();
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [repos, setRepos] = useState<Repo[]>([]);
   const [error, setError] = useState<string | null>(null);
   // unlink is reversible (the install can be linked again): hide now, commit
   // after 8s unless Undo is pressed
@@ -89,7 +82,6 @@ export function GithubPanel({
   const unlinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [notConfigured, setNotConfigured] = useState(false);
-  const [busyRepo, setBusyRepo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/settings/github/installations");
@@ -100,8 +92,6 @@ export function GithubPanel({
     }
     const data = (await res.json()) as Overview;
     setOverview(data);
-    const r = await fetch("/api/settings/github/repos");
-    if (r.ok) setRepos(((await r.json()) as { repos: Repo[] }).repos);
   }, []);
   useEffect(() => {
     void load();
@@ -133,8 +123,9 @@ export function GithubPanel({
       setUnlinking(null);
       if (!res.ok) setError(await errorMessage(res, "Could not unlink the installation. Try again."));
       await load();
+      router.refresh(); // repo catalog is server-rendered
     },
-    [load],
+    [load, router],
   );
 
   function unlink(i: Installation) {
@@ -165,44 +156,6 @@ export function GithubPanel({
     [],
   );
 
-  async function toggleRepo(repo: Repo) {
-    setBusyRepo(repo.id);
-    setError(null);
-    const res = await fetch(
-      `/api/settings/github/repos/${repo.enabled ? "disconnect" : "connect"}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fullName: repo.fullName }),
-      },
-    );
-    setBusyRepo(null);
-    if (res.ok) await load();
-    else setError(await errorMessage(res, "could not update the repo"));
-  }
-
-  async function addRepo(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    setError(null);
-    const fullName = String(new FormData(form).get("fullName") ?? "").trim();
-    const res = await fetch("/api/settings/github/repos/connect", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ fullName }),
-    });
-    if (res.ok) {
-      form.reset();
-      await load();
-    } else {
-      setError(
-        res.status === 400 || res.status === 422
-          ? "Enter the repository as owner/name, for example acme/web."
-          : await errorMessage(res, "could not link the repo"),
-      );
-    }
-  }
-
   const visibleInstalls = (overview?.installations ?? []).filter(
     (i) => i.installationId !== unlinking?.installationId,
   );
@@ -211,7 +164,7 @@ export function GithubPanel({
     (overview !== null && (!overview.configured.app || !overview.configured.slug));
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 p-4">
+    <div className="space-y-4 px-4 pt-4">
       {notice?.kind === "connected" && (
         <Notice tone="healthy" title="GitHub installation linked">
           Repositories from the installation appear below. Enable the ones whose
@@ -293,72 +246,6 @@ export function GithubPanel({
             <p className="mt-4 text-sm text-ink-subtle">
               Connecting GitHub requires an admin.
             </p>
-          )}
-        </Panel>
-      )}
-
-      {overview && !unconfigured && (
-        <Panel
-          id="gh-repos"
-          title="Repositories"
-          hint="Enabled repos sync issues and pull requests; disabled ones are ignored."
-        >
-          {repos.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-subtle">
-              No repositories yet. They appear after you install the App, or add one
-              by name.
-            </p>
-          ) : (
-            <ul className="mt-3 divide-y divide-lining-faint" aria-label="Linked repositories">
-              {repos.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-center justify-between gap-2 py-2.5 text-sm"
-                >
-                  <span className="font-mono text-xs text-ink">{r.fullName}</span>
-                  <span className="flex items-center gap-3">
-                    <span
-                      className={`font-mono text-[11px] uppercase tracking-wider ${
-                        r.enabled ? "text-healthy" : "text-ink-tertiary"
-                      }`}
-                    >
-                      {r.enabled ? "syncing" : "off"}
-                    </span>
-                    {canAdmin && (
-                      <button
-                        type="button"
-                        disabled={busyRepo === r.id}
-                        onClick={() => toggleRepo(r)}
-                        aria-label={`${r.enabled ? "Disable" : "Enable"} ${r.fullName}`}
-                        className={ghostBtn}
-                      >
-                        {r.enabled ? "Disable" : "Enable"}
-                      </button>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {canAdmin && (
-            <form onSubmit={addRepo} className="mt-2">
-              <label className={labelCls} htmlFor="gh-repo-name">
-                Add a repository by name
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="gh-repo-name"
-                  name="fullName"
-                  required
-                  placeholder="owner/name"
-                  autoComplete="off"
-                  className={field}
-                />
-                <button type="submit" className={`${ghostBtn} mt-1 shrink-0`}>
-                  Add
-                </button>
-              </div>
-            </form>
           )}
         </Panel>
       )}

@@ -48,15 +48,15 @@ test("not configured: shows the operator steps and a manifest form to github.com
   page,
 }) => {
   const csp = watchCsp(page);
-  await page.route("**/api/settings/github/installations", (r) =>
+  await page.route("**/api/settings/integrations/installations", (r) =>
     r.fulfill({
       json: { configured: { app: false, slug: false }, installations: [] },
     }),
   );
-  await page.route("**/api/settings/github/manifest", (r) =>
+  await page.route("**/api/settings/integrations/manifest", (r) =>
     r.fulfill({ json: { name: "tallyline", url: "http://x.test", redirect_url: "http://x.test/cb" } }),
   );
-  const res = await page.goto("/settings/github");
+  const res = await page.goto("/settings/integrations");
   // CSP from #93 stays strict everywhere except this exact form target
   const header = res!.headers()["content-security-policy"] ?? "";
   expect(header).toContain("form-action 'self' https://github.com;");
@@ -74,16 +74,21 @@ test("not configured: shows the operator steps and a manifest form to github.com
   expect(csp).toEqual([]);
 });
 
+test("/settings/github redirects to Integrations (one GitHub surface)", async ({ page }) => {
+  await page.goto("/settings/github?github=requested");
+  await expect(page).toHaveURL(/\/settings\/integrations\?github=requested/);
+});
+
 test("other settings pages keep form-action 'self'", async ({ page }) => {
   const res = await page.goto("/settings/agents");
   expect(res!.headers()["content-security-policy"]).toContain("form-action 'self';");
 });
 
 test("API 503 from install-url falls back to the operator steps", async ({ page }) => {
-  await page.route("**/api/settings/github/install-url", (r) =>
+  await page.route("**/api/settings/integrations/install-url", (r) =>
     r.fulfill({ status: 503, json: { error: { code: "GITHUB_NOT_CONFIGURED", message: "GITHUB_APP_SLUG not set" } } }),
   );
-  await page.goto("/settings/github");
+  await page.goto("/settings/integrations");
   await page.getByRole("button", { name: "Connect GitHub" }).click();
   await expect(page.getByRole("heading", { name: "GitHub App not configured" })).toBeVisible();
 });
@@ -100,7 +105,7 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
     }),
   ).toBe(200);
 
-  await page.goto("/settings/github");
+  await page.goto("/settings/integrations");
   await expect(page.getByText("No GitHub account is linked to this workspace.")).toBeVisible();
 
   // Connect GitHub sends the browser to the App's install page (intercepted)
@@ -122,14 +127,13 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
   await expect(installs.getByText("e2e-org")).toBeVisible();
   await expect(installs.getByText(/installation 501/)).toBeVisible();
 
-  // repo captured in the delivery appears, disabled until switched on
-  const repos = page.getByRole("list", { name: "Linked repositories" });
-  await expect(repos.getByText("e2e-org/web")).toBeVisible();
-  await expect(repos.getByText("off")).toBeVisible();
-  await repos.getByRole("button", { name: "Enable e2e-org/web" }).click();
-  await expect(repos.getByText("syncing")).toBeVisible();
-  await repos.getByRole("button", { name: "Disable e2e-org/web" }).click();
-  await expect(repos.getByText("off")).toBeVisible();
+  // repo captured in the delivery appears in Integrations' catalog, off until connected
+  const row = page.getByRole("row", { name: /e2e-org\/web/ });
+  await expect(row.getByText("off")).toBeVisible();
+  await row.getByRole("button", { name: "connect" }).click();
+  await expect(row.getByText("on", { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "disconnect" }).click();
+  await expect(row.getByText("off")).toBeVisible();
 
   // idempotent: returning again does not duplicate
   await confirmLink(page, 501, "update");
@@ -198,14 +202,14 @@ test("org-member install request and malformed callback", async ({ page }) => {
 });
 
 test("setup POST refuses cross-site requests (CSRF)", async ({ page, request }) => {
-  await page.goto("/settings/github");
+  await page.goto("/settings/integrations");
   const base = new URL(page.url()).origin;
-  const evil = await request.post(`${base}/api/settings/github/setup`, {
+  const evil = await request.post(`${base}/api/settings/integrations/setup`, {
     headers: { "content-type": "application/json", origin: "https://evil.example" },
     data: { installationId: 501 },
   });
   expect(evil.status()).toBe(403);
-  const noOrigin = await request.post(`${base}/api/settings/github/setup`, {
+  const noOrigin = await request.post(`${base}/api/settings/integrations/setup`, {
     headers: { "content-type": "text/plain" },
     data: JSON.stringify({ installationId: 501 }),
   });

@@ -25,8 +25,8 @@ export function GithubLinkConfirm({
     });
     router.replace(
       res.ok
-        ? "/settings/github?github=connected"
-        : `/settings/github?github=error&code=${res.status}`,
+        ? "/settings/integrations?github=connected"
+        : `/settings/integrations?github=error&code=${res.status}`,
     );
   }
 

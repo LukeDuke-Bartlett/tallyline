@@ -25,11 +25,11 @@ describe("form-action", () => {
   it("is self-only by default", () => {
     expect(buildCsp("n", { dev: false })).toContain("form-action 'self';");
   });
-  it("adds github.com only on /settings/github", () => {
-    expect(formActionFor("/settings/github")).toEqual(["https://github.com"]);
+  it("adds github.com only on /settings/integrations", () => {
+    expect(formActionFor("/settings/integrations")).toEqual(["https://github.com"]);
     expect(formActionFor("/settings/members")).toEqual([]);
-    expect(formActionFor("/settings/github/x")).toEqual([]);
-    expect(buildCsp("n", { dev: false, formAction: formActionFor("/settings/github") })).toContain(
+    expect(formActionFor("/settings/integrations/x")).toEqual([]);
+    expect(buildCsp("n", { dev: false, formAction: formActionFor("/settings/integrations") })).toContain(
       "form-action 'self' https://github.com;",
     );
   });
