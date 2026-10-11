@@ -33,10 +33,10 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
   {
     name: "github not configured",
     run: async (page) => {
-      await page.route("**/api/settings/integrations/installations", (r) =>
+      await page.route("**/api/settings/github/installations", (r) =>
         r.fulfill({ json: { configured: { app: false, slug: false }, installations: [] } }),
       );
-      await page.route("**/api/settings/integrations/manifest", (r) =>
+      await page.route("**/api/settings/github/manifest", (r) =>
         r.fulfill({ json: { name: "tallyline", url: "http://x.test" } }),
       );
       await page.goto("/settings/integrations");
@@ -47,7 +47,7 @@ const STATES: { name: string; run: (page: Page) => Promise<void> }[] = [
   {
     name: "github linked + 409 notice + unlink toast",
     run: async (page) => {
-      await page.route("**/api/settings/integrations/installations", (r) =>
+      await page.route("**/api/settings/github/installations", (r) =>
         r.fulfill({
           json: {
             configured: { app: true, slug: true },

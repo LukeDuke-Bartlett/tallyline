@@ -124,9 +124,9 @@ GH PATCH → GH `closed` echo → dropped as bot-sent.
 - Label *removals* never propagate outbound — tallyline has no
   remove-label write path, and the outbound mirror only ever adds.
 
-## Web: Settings > GitHub
+## Web: Settings > Integrations
 
-`/settings/github` shows the operator steps while the API has no App, then
+`/settings/integrations` shows the operator steps while the API has no App, then
 Connect GitHub, linked installations (Unlink, undoable for 8s) and per-repo
 enable/disable. Set the App's **Setup URL** to
 `https://<web host>/integrations/github/callback` with "Redirect on update":

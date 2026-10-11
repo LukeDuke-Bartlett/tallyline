@@ -48,12 +48,12 @@ test("not configured: shows the operator steps and a manifest form to github.com
   page,
 }) => {
   const csp = watchCsp(page);
-  await page.route("**/api/settings/integrations/installations", (r) =>
+  await page.route("**/api/settings/github/installations", (r) =>
     r.fulfill({
       json: { configured: { app: false, slug: false }, installations: [] },
     }),
   );
-  await page.route("**/api/settings/integrations/manifest", (r) =>
+  await page.route("**/api/settings/github/manifest", (r) =>
     r.fulfill({ json: { name: "tallyline", url: "http://x.test", redirect_url: "http://x.test/cb" } }),
   );
   const res = await page.goto("/settings/integrations");
@@ -85,7 +85,7 @@ test("other settings pages keep form-action 'self'", async ({ page }) => {
 });
 
 test("API 503 from install-url falls back to the operator steps", async ({ page }) => {
-  await page.route("**/api/settings/integrations/install-url", (r) =>
+  await page.route("**/api/settings/github/install-url", (r) =>
     r.fulfill({ status: 503, json: { error: { code: "GITHUB_NOT_CONFIGURED", message: "GITHUB_APP_SLUG not set" } } }),
   );
   await page.goto("/settings/integrations");
@@ -121,7 +121,7 @@ test("connect → github.com install → callback binds, repos backfill, unlink"
   const before = await api.get(`/v1/workspaces/${WS}/github/installations`);
   expect((await before.json()).installations).toEqual([]);
   await page.getByRole("button", { name: "Link installation" }).click();
-  await expect(page).toHaveURL(/\/settings\/github\?github=connected/);
+  await expect(page).toHaveURL(/\/settings\/integrations\?github=connected/);
   await expect(page.getByText("GitHub installation linked")).toBeVisible();
   const installs = page.getByRole("list", { name: "Linked installations" });
   await expect(installs.getByText("e2e-org")).toBeVisible();
@@ -204,12 +204,12 @@ test("org-member install request and malformed callback", async ({ page }) => {
 test("setup POST refuses cross-site requests (CSRF)", async ({ page, request }) => {
   await page.goto("/settings/integrations");
   const base = new URL(page.url()).origin;
-  const evil = await request.post(`${base}/api/settings/integrations/setup`, {
+  const evil = await request.post(`${base}/api/settings/github/setup`, {
     headers: { "content-type": "application/json", origin: "https://evil.example" },
     data: { installationId: 501 },
   });
   expect(evil.status()).toBe(403);
-  const noOrigin = await request.post(`${base}/api/settings/integrations/setup`, {
+  const noOrigin = await request.post(`${base}/api/settings/github/setup`, {
     headers: { "content-type": "text/plain" },
     data: JSON.stringify({ installationId: 501 }),
   });

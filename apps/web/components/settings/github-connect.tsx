@@ -41,7 +41,7 @@ export function callbackErrorCopy(code: number): { title: string; body: string }
     case 409:
       return {
         title: "That GitHub installation is linked to another workspace",
-        body: "An installation can belong to one workspace. Unlink it from the other workspace (Settings, GitHub, Unlink there), then connect again.",
+        body: "An installation can belong to one workspace. Unlink it from the other workspace (Settings, Integrations, Unlink there), then connect again.",
       };
     case 503:
       return {
