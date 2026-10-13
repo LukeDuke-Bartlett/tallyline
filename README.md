@@ -27,10 +27,10 @@
 - **Web:** Next.js App Router + Tailwind CSS + shadcn/ui + cmdk (`apps/web`)
 - **API:** Node + Hono + Postgres via Drizzle (`apps/api`)
 - **MCP server:** Model Context Protocol server for AI agents (`apps/mcp-server`)
-- **Dispatch:** agent-routing worker on BullMQ (`services/dispatch`)
+- **Dispatch:** agent-routing worker, Postgres-backed (`services/dispatch`)
 - **CLI:** `tallyline` command-line tool (`tools/cli`)
 - **Shared packages:** `packages/ui`, `packages/types`, `packages/config`
-- **Infra:** Docker Compose (Postgres + Redis) for dev and self-host
+- **Infra:** Docker Compose (Postgres only) for dev and self-host
 
 ## What it is
 
@@ -66,7 +66,7 @@ git clone https://github.com/duketopceo/tallyline
 cd tallyline
 pnpm install
 cp .env.example .env
-docker compose up -d   # Postgres on :5432, Redis on :6380
+docker compose up -d   # Postgres on :5432
 pnpm dev               # web on :3100, API on :4000
 ```
 
