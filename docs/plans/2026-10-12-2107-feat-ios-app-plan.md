@@ -10,7 +10,9 @@ execution: code
 
 ## Goal Capsule
 
-**Objective:** A Tallyline user can sign in on an iPhone and work the full tracker — triage, board, projects, cycles, issue create/edit/comment — against `api.tallyline.app` or any self-hosted instance, distributed to testers via TestFlight.
+**Objective:** A Tallyline user can sign in on an iPhone and work the full tracker — triage, board, projects, cycles, issue create/edit/comment — against `api.tallyline.app` or any self-hosted instance, installed on their registered devices.
+
+**Prerequisites:** `xtool` ≥1.21 (`github.com/xtool-org/xtool`; installed at `~/.local/bin/xtool`, proven by the user's `kate-ios` app — a separate SwiftUI app already built/signed/installed from this machine via the paid developer account). The toolchain needs `xtool setup` + `xtool auth` once per machine/account.
 
 **Means:** Native SwiftUI app in `apps/ios`, authenticated via the existing OAuth 2.1 authorization server (RFC 7591 DCR + auth code + PKCE + refresh tokens) (KTD2).
 
@@ -18,7 +20,7 @@ execution: code
 
 **Stop conditions:** Any change to OAuth grant semantics beyond redirect-URI validation; any requirement for server-side session state on iOS; a need for APNs before TestFlight v1.
 
-**Execution profile:** `ce-work`, one U at a time; U1 ships independently to `apps/api`; U2–U7 are Xcode-side and can run sequentially on one branch.
+**Execution profile:** `ce-work`, one U at a time; U1 ships independently to `apps/api`; U2–U7 are app-side and can run sequentially on one branch. All app builds run locally via **xtool** — no macOS/Xcode required.
 
 ---
 
@@ -42,7 +44,7 @@ The user holds an Apple Developer membership ($99/yr) and wants Tallyline on iOS
 - **R6 — Board parity.** Projects list/detail, cycles (active, upcoming, complete), labels, and the roadmap view — all readable; create/edit where the API supports it.
 - **R7 — Keyboard-first ethos on iPad.** Where a hardware keyboard is present, discoverable shortcuts (Cmd+K command palette, j/k navigation) mirroring the web ethos. iPhone remains fully touch-driven.
 - **R8 — Design fidelity.** Silver Lining tokens (color, type scale, spacing, radii) drive the SwiftUI theme so the app reads as Tallyline, not stock iOS — dark and light.
-- **R9 — TestFlight distribution.** Signed build uploadable to App Store Connect for TestFlight; no App Store submission in v1.
+- **R9 — Tester distribution.** Signed builds installable on registered devices via `xtool install` — that alone satisfies v1. A TestFlight build upload (Build Uploads API) is attempted in U8 but is non-blocking; no App Store submission in v1.
 - **R10 — Redirect-URI validation.** The API accepts RFC 8252 §7.1 private-use URI schemes (e.g. `tallyline://oauth/callback`) during DCR for native clients, while continuing to reject non-https, non-loopback http, and fragment-bearing URIs.
 
 ### Key Decisions
@@ -50,12 +52,12 @@ The user holds an Apple Developer membership ($99/yr) and wants Tallyline on iOS
 - **Full board parity in v1** (`session-settled: user 2026-10-12`) — chosen over a triage-only companion or agent-approval app; the API surface is already complete, so parity is a client-side build problem, not a backend one. Governs R5, R6.
 - **OAuth browser flow, not PAT** (`session-settled: user 2026-10-12`) — ASWebAuthSession + PKCE reuses the OAuth 2.1 server built for MCP clients; no credential paste, refresh tokens handled server-side, self-host-ready via instance URL. Governs R1, R2, R3.
 - **Native SwiftUI, not RN/PWA** (`session-settled: user 2026-10-12`) — best fit for iOS polish, Keychain, ASWebAuthSession, widgets/Shortcuts headroom, and the keyboard-first design ethos; accepts that no web UI code is shared. Governs R7, R8.
-- **TestFlight only** (`session-settled: user 2026-10-12`) — beta distribution for dogfooding; App Store review, screenshots, privacy manifest, and marketing page deferred until the app proves itself. Governs R9.
+- **Beta distribution, not App Store** (`session-settled: user 2026-10-12`, refined during planning) — user picked TestFlight; xtool's local install path covers the same dogfood need without an upload mechanism, so v1's bar is registered-device installs with TestFlight as the stretch. App Store review, screenshots, privacy manifest deferred. Governs R9.
 - **App lives in the monorepo** — `apps/ios` keeps one issue tracker, one DESIGN contract, and silver-lining tokens in reach; the Xcode project does not join the pnpm workspace. Governs U2.
 
 ### Success Criteria
 
-- A tester can install from TestFlight, point the app at `api.tallyline.app` (or a self-host URL), sign in through the OAuth consent screen without typing a password into the app, and work their board end to end.
+- A tester can install the app on their registered device (via xtool, or TestFlight if the U8 spike lands), point it at `api.tallyline.app` (or a self-host URL), sign in through the OAuth consent screen without typing a password into the app, and work their board end to end.
 - Every screen the web board exposes for read operations has an iOS equivalent backed by the same `/v1` endpoints.
 - Sign-in survives days of use (refresh path) and fails closed (revoked token → signed-out picker, no crash, no stale session).
 
@@ -67,8 +69,8 @@ The user holds an Apple Developer membership ($99/yr) and wants Tallyline on iOS
 
 ### Open Questions
 
-- **macOS build access** (assumption, non-blocking): this machine runs Asahi Linux — no Xcode. Plan assumes builds happen on a macOS device (user's or cloud) and/or GitHub Actions `macos-latest` for signing + TestFlight upload. If no Mac is reachable, the code still lands but distribution waits.
 - **Bundle/App ID naming**: `app.tallyline.ios` vs `app.tallyline.mobile` — decide at U2; must match the AASA domain later.
+- **TestFlight upload mechanism** (deferred to U8): xtool builds/signs/installs locally but has no App Store Connect upload subcommand — the upload path is the Build Uploads API: create a `buildUploads` resource, transfer the binary via `buildUploadFiles` + its `uploadOperations`, both callable from Linux with an ASC API key. Direct device install via `xtool install` already covers dogfooding, so v1 is not blocked on this.
 
 ---
 
@@ -79,9 +81,9 @@ The user holds an Apple Developer membership ($99/yr) and wants Tallyline on iOS
 - **KTD1 — API is frozen for v1 except one validation change.** Board parity maps onto existing `/v1` routes; the only server change is R10 (private-use redirect schemes in DCR validation at `apps/api/src/services/mcp-oauth.ts` — `validRedirectUri`/`validateRedirectList`). No new endpoints, no token-shape changes.
 - **KTD2 — DCR-first client identity.** The app calls `POST /oauth/register` once per instance (client_name `Tallyline iOS`, redirect `tallyline://oauth/callback`, `token_endpoint_auth_method: none`), persists `client_id` per instance URL in Keychain, then runs standard auth-code+PKCE. Issuer discovery via `/.well-known/oauth-authorization-server` (already served). Universal-link callback is the post-v1 upgrade — requires `apple-app-site-association` hosting + associated-domains entitlement; custom scheme is sufficient for TestFlight.
 - **KTD3 — Generated API client.** `swift-openapi-generator` (Apple's official package) consumes `/v1/openapi.json` at build time into `Sources/Generated`; middleware injects the bearer token and workspace slug. A `scripts/gen-api-client.sh` pins the spec fetch so regeneration is reproducible. Fallback: hand-rolled `APIClient` + Codable models if generated types fight SwiftUI — decide in U4 with one spike day.
-- **KTD4 — Single-target SwiftUI app, zero UI deps.** `NavigationStack` on iPhone, `NavigationSplitView` on iPad; async/await + `ObservableObject` view models; Keychain via `Security` framework behind a `TokenStore` protocol for testability. Only package dep: `swift-openapi-generator` + its `OpenAPIURLSession` runtime.
+- **KTD4 — Single-target SwiftUI app as an xtool SwiftPM project, zero UI deps.** `xtool new` scaffold (`Package.swift` + `xtool.yml`), not an `.xcodeproj` — xtool builds SwiftPM packages directly on Linux. `NavigationStack` on iPhone, `NavigationSplitView` on iPad; async/await + `ObservableObject` view models; Keychain via `Security` framework behind a `TokenStore` protocol for testability. Only package dep: `swift-openapi-generator` + its `OpenAPIURLSession` runtime (must resolve under the open-source Swift toolchain — verify in the U2 spike).
 - **KTD5 — Token theme, not a port.** Silver Lining tokens are source-generated: a small `packages/silver-lining` build step already emits JSON — the app consumes a generated `Theme.swift` (color/type/spacing constants), keeping design drift one regen away.
-- **KTD6 — Signing + upload via Xcode Cloud or `fastlane pilot`.** Manual Xcode upload is acceptable for the first build; CI signing on `macos-latest` is the repeatable path but optional for v1.
+- **KTD6 — xtool owns build, sign, and install locally.** `xtool ds` manages the paid-account certificate/profile/device lifecycle (1-year provisioning, no 7-day expiry); `xtool dev build` produces signed IPAs; `xtool install` sideloads to registered devices — that IS the v1 dogfood path, proven locally by `kate-ios`. TestFlight upload is the one gap (see Open Questions) and is a scripted ASC API call, not a build-system dependency.
 
 ### High-Level Technical Design
 
@@ -102,11 +104,11 @@ iPhone/iPad                     instance (api.tallyline.app or self-host)
 - The OAuth server stays public-client-only; no client secrets ship in the app.
 - `/v1/openapi.json` remains current enough to generate against (it requires auth today — U4 fetches with a dev token or unauthenticated copy task decides).
 - APNs is out of v1 scope per scope boundaries; the app polls.
-- macOS build access exists (see Open Questions).
+- **xtool is the build toolchain** — installed locally (v1.21.0) and already proven against the user's paid developer account by the `kate-ios` app. No macOS/XCode access needed or assumed.
 
 ### Sequencing
 
-U1 (API redirect schemes) → U2 (scaffold) → U3 (auth) → U4 (client) → U5 (issue loop) → U6 (board parity) → U7 (theme/keyboard) → U8 (TestFlight). U1 is independent and deploys alone; U5/U6 can overlap if multiple hands exist.
+U1 (API redirect schemes) → U2 (scaffold) → U3 (auth) → U4 (client) → U5 (issue loop) → U6 (board parity) → U7 (theme/keyboard) → U8 (distribution). U1 is independent and deploys alone; U5/U6 can overlap if multiple hands exist.
 
 ---
 
@@ -121,14 +123,14 @@ U1 (API redirect schemes) → U2 (scaffold) → U3 (auth) → U4 (client) → U5
 - **Test scenarios:** `tallyline://oauth/callback` registers; `com.example.app:/cb` registers; `javascript:alert(1)`, `data:text/html,x`, `http://evil.com`, `https://x#frag` still rejected; loopback port-flex rule still passes (regression).
 - **Verification:** `pnpm --filter @tallyline/api test` green.
 
-### U2. Xcode scaffold + repo home
+### U2. xtool scaffold + repo home
 
-- **Goal:** `apps/ios` contains a buildable SwiftUI app target + unit-test target, bundle ID reserved in the dev account.
-- **Requirements:** R1 (scaffold only), KTD1, KTD4
-- **Files:** `apps/ios/**` (new), `apps/ios/README.md` (build/test/signing notes), repo `README.md` one-line mention
-- **Approach:** Xcode 16 project, min iOS 17, Swift 6 strict concurrency, `Tallyline` target + `TallylineTests`. App ID registered in the Apple Developer portal; `.entitlements` minimal (none for v1 — no APNs, no associated domains until universal links land). Add `swiftpm` dep on `swift-openapi-generator` + `OpenAPIURLSession` (pin tags ≥7 days old per repo dependency policy). Gitignore `xcuserdata`, `DerivedData`.
-- **Test scenarios:** `xcodebuild test -scheme Tallyline -destination 'platform=iOS Simulator'` passes on a clean checkout.
-- **Verification:** app builds on `macos-latest` (or local Mac); no secrets/entitlements beyond the App ID.
+- **Goal:** `apps/ios` contains a buildable SwiftUI app package + test target, bundle ID reserved via the developer account.
+- **Requirements:** R1 (scaffold only), KTD1, KTD4, KTD6
+- **Files:** `apps/ios/**` (new), `apps/ios/README.md` (xtool build/test/signing notes), repo `README.md` one-line mention
+- **Approach:** `xtool new` produces a SwiftPM app project (`Package.swift` + `xtool.yml` + `Sources/`); min iOS 17, Swift 6 strict concurrency, `Tallyline` target + `TallylineTests`. Register the App ID + provisioning profile with `xtool ds identifiers` / `xtool ds profiles` against the paid account; entitlements minimal for v1 (no APNs, no associated domains until universal links land). Add the `swift-openapi-generator`/`OpenAPIURLSession` package deps here and confirm they resolve under xtool's Darwin Swift SDK — that is this unit's spike; if resolution fails, fall back to hand-rolled Codable models and drop the dep. Gitignore `.xtool`, `Packages/`, build output.
+- **Test scenarios:** `xtool dev build` produces a signed IPA on this machine; `swift test` (host-side logic tests) passes on a clean checkout.
+- **Verification:** signed IPA installs to a registered device via `xtool install` and launches to the instance picker; no secrets committed.
 
 ### U3. Auth: instance picker → OAuth → Keychain
 
@@ -175,29 +177,29 @@ U1 (API redirect schemes) → U2 (scaffold) → U3 (auth) → U4 (client) → U5
 - **Test scenarios:** token regen produces compilable Swift; snapshot-ish assertions on resolved colors in both schemes; Cmd+K opens palette in UI test.
 - **Verification:** `pnpm --filter @tallyline/silver-lining build` emits `Theme.swift`; visual pass vs web.
 
-### U8. TestFlight packaging
+### U8. Distribution: device install now, TestFlight spike
 
-- **Goal:** Signed build in testers' hands.
-- **Requirements:** R9
-- **Files:** `apps/ios/fastlane/Fastfile` or Xcode Cloud workflow, `apps/ios/README.md` distribution section, `ROADMAP.md` (row update)
-- **Approach:** Choose one: Xcode Cloud (zero CI infra, ties to App Store Connect) or `fastlane match` + `pilot` on `macos-latest`. Auto-increment build numbers; testers = internal App Store Connect group. No App Store metadata beyond what TestFlight requires (beta description, feedback email).
-- **Test scenarios:** archive + export succeeds with the distribution profile; TestFlight processes the build; install on a physical device signs in and works.
-- **Verification:** build visible in TestFlight, installable by a second Apple ID.
+- **Goal:** The app is running on real devices via xtool; the TestFlight upload path is proven or explicitly deferred.
+- **Requirements:** R9, KTD6
+- **Files:** `apps/ios/README.md` distribution section, `apps/ios/scripts/` (sign/build/install + optional ASC upload script), `ROADMAP.md` (row update)
+- **Approach:** Repeatable local pipeline: `xtool ds` (cert/profile/device) → `xtool dev build` (release IPA) → `xtool install` to registered devices — this satisfies dogfood distribution under the paid account (1-year provisioning). Two distinct artifacts: the **dev-signed IPA** (development cert + development profile) for device installs, and — only if TestFlight lands — a **distribution-signed IPA** (Apple Distribution cert + App Store provisioning profile for the same App ID). TestFlight spike: create the app record in App Store Connect, mint an ASC API key, upload the distribution IPA via the Build Uploads API (`buildUploads` + `buildUploadFiles`). If the spike fails, dev-signed installs are v1 distribution and App Store/TestFlight is recorded as a deferred follow-up — not a blocker.
+- **Test scenarios:** release IPA signs + installs cleanly on a second registered device; provisioning profile renewals documented; TestFlight spike outcome recorded either way.
+- **Verification:** a second device runs the app signed from this machine; TestFlight status documented (uploaded or deferred).
 
 ---
 
 ## Verification Contract
 
 - API change: `pnpm --filter @tallyline/api test` (mcp-oauth tests must stay green including new scheme cases); `pnpm check` repo-wide for U1's PR.
-- iOS: `xcodebuild test -scheme Tallyline -destination 'platform=iOS Simulator,name=iPhone 16'`; keep `TallylineTests` green per unit.
+- iOS: `xtool dev build` produces a signed IPA per unit; `swift test` keeps `TallylineTests` green; `xtool install` + launch on a registered device is the per-unit smoke gate.
 - Live acceptance: sign-in → triage → comment → state change → verify on web, against `api.tallyline.app`.
-- Distribution: TestFlight install on a second device.
+- Distribution: dev-signed install on a second device; TestFlight upload proven or explicitly deferred per U8.
 
 ## Definition of Done
 
 - U1 merged and deployed (custom schemes registerable).
-- `apps/ios` on `main`, builds clean, tests green.
+- `apps/ios` on `main`; `xtool dev build` produces a signed IPA, tests green.
 - Tester signs in via OAuth consent (no password-in-app), works the full board, stays signed in across refresh cycles.
-- One TestFlight build distributed; install + smoke verified.
+- App installed on ≥1 registered device via xtool; TestFlight upload outcome recorded (uploaded or deferred).
 - `ROADMAP.md` U15 row points at this plan; any abandoned spike code removed from the diff.
 - App Store submission remains explicitly out — noted in ROADMAP.
