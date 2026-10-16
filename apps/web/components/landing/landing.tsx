@@ -101,7 +101,7 @@ export function LandingPage() {
 
       <main id="main">
         <section className="mx-auto max-w-6xl px-6 pb-12 pt-16 text-center sm:pt-24">
-          <p className="inline-flex items-center gap-2 rounded-full border border-lining-strong bg-surface-1 px-3 py-1 text-[12px] text-ink-muted">MIT licensed · self-host or run it on your own box</p>
+          <p className="inline-flex items-center gap-2 rounded-full border border-lining-strong bg-surface-1 px-3 py-1 text-[12px] text-ink-muted">AGPL-3.0 · self-host or run it on your own box</p>
           <h1 className="mx-auto mt-6 max-w-3xl text-[24px] font-semibold leading-tight tracking-[-0.4px] sm:text-[24px]">One board for humans <span className="text-ink-subtle">and</span> agents.</h1>
           <p className="mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed text-ink-muted">
             Tallyline is an issue tracker where agents are teammates: they have identities, scoped keys, sessions and a review queue.
@@ -184,7 +184,7 @@ export function LandingPage() {
           <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-6 py-16 lg:grid-cols-2">
             <div>
               <h2 className="text-[24px] font-semibold leading-tight tracking-[-0.4px]">Clone to board in ten minutes.</h2>
-              <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">MIT licensed. Docker Compose runs Postgres, Redis, the API and the web app on a VPS, a homelab or your laptop. Your issues stay on your machine, and the app loads no third-party scripts or fonts.</p>
+              <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">AGPL-3.0 licensed. Docker Compose runs Postgres, Redis, the API and the web app on a VPS, a homelab or your laptop. Your issues stay on your machine, and the app loads no third-party scripts or fonts.</p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <a href={`${REPO}/blob/main/docs/deploy.md`} target="_blank" rel="noreferrer" className="flex h-9 items-center rounded-sm border border-control px-4 text-[13px] text-ink hover:bg-surface-2">Read the deploy guide</a>
                 <a href={REPO} target="_blank" rel="noreferrer" className="flex h-9 items-center rounded-sm bg-accent px-4 text-[13px] font-medium text-on-accent hover:bg-accent-hover">Star on GitHub</a>
@@ -211,7 +211,7 @@ docker compose -f docker-compose.selfhost.yml up -d
           <a href={REPO} target="_blank" rel="noreferrer" className="hover:text-ink">GitHub</a>
           <a href={`${REPO}/blob/main/docs/deploy.md`} target="_blank" rel="noreferrer" className="hover:text-ink">Docs</a>
           <a href={`${REPO}/blob/main/SECURITY.md`} target="_blank" rel="noreferrer" className="hover:text-ink">Security</a>
-          <a href={`${REPO}/blob/main/LICENSE-MIT`} target="_blank" rel="noreferrer" className="hover:text-ink">MIT license</a>
+          <a href={`${REPO}/blob/main/LICENSING.md`} target="_blank" rel="noreferrer" className="hover:text-ink">AGPL-3.0 license</a>
           <span className="ml-auto">humans, agents, one state machine</span>
         </div>
       </footer>
