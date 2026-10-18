@@ -11,7 +11,11 @@ import { type IssueLike, useIssueEditors } from "./app/pickers";
 import { useMeta, useNames, usePeek } from "./app/providers";
 import { Assignee, Glint, Kbd, PriorityGlyph, StateGlyph } from "./app/ui";
 import { PRIORITY_LABEL, relTime, STATE_LABEL } from "@/lib/format";
+
 import { apiQuery, parseFilters } from "@/lib/filters";
+import { IconCheck, IconPeek } from "./app/icons";
+
+const FILTER_PARAMS = ["state", "priority", "assignee", "label", "project", "cycle", "team", "source", "q"] as const;
 
 export interface ListLabel {
   id: string;
@@ -315,10 +319,33 @@ export function IssueListClient({
   };
 
   if (flat.length === 0) {
+    // §16 empty flavors: filtered-empty offers a one-click clear; a truly empty
+    // workspace gets the first-run hint instead.
+    const filtered = FILTER_PARAMS.some((k) => search.get(k) !== null);
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-8 py-12 text-center">
-        <p className="text-[14px] font-medium text-ink">No issues match</p>
-        <p className="mt-1 max-w-sm text-[13px] text-ink-subtle">Nothing here yet for these filters. Clear a filter, or press <Kbd>c</Kbd> to create an issue.</p>
+        {filtered ? (
+          <>
+            <p className="text-[14px] font-medium text-ink">No issues match these filters</p>
+            <p className="mt-1 max-w-sm text-[13px] text-ink-subtle">Widen or clear a filter to see more.</p>
+            <button
+              type="button"
+              className="mt-3 h-7 rounded-sm border border-lining px-3 text-[13px] font-medium text-ink hover:bg-overlay"
+              onClick={() => {
+                const q = new URLSearchParams(search.toString());
+                for (const k of FILTER_PARAMS) q.delete(k);
+                router.replace(q.size ? `${pathname}?${q}` : pathname);
+              }}
+            >
+              Clear filters
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-[14px] font-medium text-ink">No issues yet</p>
+            <p className="mt-1 max-w-sm text-[13px] text-ink-subtle">Press <Kbd>c</Kbd> to create the first one.</p>
+          </>
+        )}
         {emptyAction}
       </div>
     );
@@ -326,7 +353,7 @@ export function IssueListClient({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" style={{ ["--row-h" as string]: `${rowH}px` }}>
-      <NewPill count={live.count} onShow={() => { live.reset(); router.refresh(); }} />
+      <NewPill count={live.count} down={live.down} onShow={() => { live.reset(); router.refresh(); }} />
       <div ref={listRef} className="scroll-quiet min-h-0 flex-1 overflow-y-auto" data-issue-list>
         {groups
           ? groups.map((g) => (
@@ -400,7 +427,7 @@ function Row({
         className={`${ctl} ${!(isSelected || anySelected) ? "max-sm:hidden" : ""} ${isSelected || anySelected || isCursor ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"}`}
       >
         <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-xs border ${isSelected ? "border-accent bg-accent text-on-accent" : "border-control"}`}>
-          {isSelected && <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><path d="M2 5.3l2 2 4-4.3" /></svg>}
+          {isSelected && <IconCheck size={10} weight="bold" aria-hidden />}
         </span>
       </button>
       <button type="button" tabIndex={tab} className={ctl} onClick={(e) => editors.pickPriority(e.currentTarget, [like])} aria-label={`Priority ${PRIORITY_LABEL[m.priority]}, change`}>
@@ -428,7 +455,7 @@ function Row({
       {mode === "triage" && issue.source && <span className="hidden shrink-0 rounded-full border border-lining px-2 text-[11px] text-ink-muted sm:inline">{issue.source}</span>}
       {agentFiled && <span title={`Filed by ${names.actor("agent", issue.creatorId)}`}><Glint size={12} label={`Filed by agent ${names.actor("agent", issue.creatorId)}`} /></span>}
       <button type="button" tabIndex={tab} onClick={onPeek} aria-label={`Peek ${issue.key}`} aria-pressed={peekOpen} className={`${ctl} text-ink-subtle opacity-0 focus-visible:opacity-100 group-hover:opacity-100 max-sm:hidden`}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" /><path d="M8.5 2.5v9" /></svg>
+        <IconPeek size={14} aria-hidden />
       </button>
       <button type="button" tabIndex={tab} className={ctl} onClick={(e) => editors.pickAssignee(e.currentTarget, [like])} aria-label={`Assignee ${assignee ?? "none"}, change`}>
         <Assignee type={m.assigneeType} name={assignee} />

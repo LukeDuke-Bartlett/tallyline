@@ -10,6 +10,7 @@ import { Glint, Kbd, PriorityGlyph, Skeleton } from "@/components/app/ui";
 import { SessionTimeline, type Outcome, type Session } from "@/components/session-timeline";
 import { relTime } from "@/lib/format";
 import { Markdown } from "@/lib/markdown";
+import { IconCheck } from "./app/icons";
 
 export interface QueueRow {
   id: string;
@@ -149,7 +150,7 @@ export function ReviewQueue({ queue }: { queue: QueueRow[] }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-      <NewPill count={live.count} onShow={() => { live.reset(); router.refresh(); }} />
+      <NewPill count={live.count} down={live.down} onShow={() => { live.reset(); router.refresh(); }} />
       <div className="flex min-h-0 w-full flex-col border-lining-faint max-lg:max-h-[42%] max-lg:shrink-0 max-lg:border-b lg:w-[400px] lg:shrink-0 lg:border-r">
         {selected.size > 0 && (
           <div role="toolbar" aria-label="Bulk review" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-lining-faint bg-surface-1 px-4 py-1.5">
@@ -162,7 +163,7 @@ export function ReviewQueue({ queue }: { queue: QueueRow[] }) {
           {rows.map((r, i) => (
             <div key={r.key} role="listitem" data-index={i} data-cursor={i === cursor} onMouseMove={() => setCursor(i)} className={`flex items-center gap-2 border-b border-lining-faint border-l-2 px-3 py-2 ${selected.has(r.key) ? "border-l-accent" : "border-l-transparent"} ${i === cursor ? "bg-surface-2" : ""}`}>
               <button type="button" role="checkbox" aria-checked={selected.has(r.key)} aria-label={`Select ${r.key}`} onClick={() => setSelected((s) => { const n = new Set(s); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs hover:bg-surface-3">
-                <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-xs border ${selected.has(r.key) ? "border-accent bg-accent text-on-accent" : "border-control"}`}>{selected.has(r.key) && <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><path d="M2 5.3l2 2 4-4.3" /></svg>}</span>
+                <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-xs border ${selected.has(r.key) ? "border-accent bg-accent text-on-accent" : "border-control"}`}>{selected.has(r.key) && <IconCheck size={10} weight="bold" aria-hidden />}</span>
               </button>
               <Link href={`/issues/${r.key}`} tabIndex={i === cursor ? 0 : -1} className="min-w-0 flex-1" onClick={(e) => { e.preventDefault(); setCursor(i); }}>
                 <span className="flex items-center gap-2"><PriorityGlyph priority={r.priority as never} /><span className="font-mono text-[12px] text-ink-subtle">{r.key}</span></span>
