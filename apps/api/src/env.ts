@@ -1,5 +1,6 @@
 import { readEnv } from "@tallyline/types";
 import { config } from "dotenv";
+import { parseKeyExpiryDays } from "./lib/key-expiry.js";
 import { assertProductionSecrets, DEV_JWT_SECRET } from "./lib/startup-guard.js";
 
 config({ path: new URL("../../../.env", import.meta.url) });
@@ -29,6 +30,11 @@ export const config_ = {
   ),
   jwtSecret: env("JWT_SECRET", DEV_JWT_SECRET),
   rateLimitPerMin: Number(env("RATE_LIMIT_PER_MIN", "600")),
+  // expiry applied to a newly minted or rotated agent key when the caller
+  // gives none (days; 0 = keys never expire by default)
+  agentKeyDefaultExpiryDays: parseKeyExpiryDays(
+    readEnv(process.env, "AGENT_KEY_DEFAULT_EXPIRY_DAYS"),
+  ),
   // unauthenticated traffic per client IP (and failed-credential attempts)
   rateLimitAnonPerMin: Number(env("RATE_LIMIT_ANON_PER_MIN", "120")),
   // login / bootstrap / invite-accept / OAuth start+callback per client IP
