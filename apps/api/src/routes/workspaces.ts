@@ -9,6 +9,7 @@ import { isInstanceAdmin, memberOf, requireRole } from "../services/members.js";
 import { isValidTimezone } from "../services/cycle-schedule.js";
 import { config_ } from "../env.js";
 import { isCookieSession } from "./auth.js";
+import { assertWithinLimit } from "../services/entitlements.js";
 
 const createWorkspaceSchema = z.object({
   slug: z
@@ -82,6 +83,8 @@ export const workspaceRoutes = new Hono()
     if (existing.length > 0) {
       return apiError(c, 409, "CONFLICT", `workspace '${body.slug}' exists`);
     }
+    // billing on: a new workspace starts on Free, capped per owner
+    await assertWithinLimit("workspaces", session.userId);
     const [ws] = await db.insert(workspaces).values(body).returning();
     await db.insert(workspaceMembers).values({
       workspaceId: ws!.id,
@@ -241,6 +244,7 @@ async function authorizeWorkspace(
       throw new HttpError(403, "FORBIDDEN_WORKSPACE", "credential not scoped to this workspace");
     }
     c.set("memberRole", null);
+    c.set("usageWorkspaceId", ws.id); // counted once the response is known
     return ws;
   }
   if (session) {
@@ -255,6 +259,7 @@ async function authorizeWorkspace(
       throw new HttpError(403, "FORBIDDEN_WORKSPACE", "not a member of this workspace");
     }
     c.set("memberRole", member.role);
+    c.set("usageWorkspaceId", ws.id); // counted once the response is known
     return ws;
   }
   throw new HttpError(401, "UNAUTHENTICATED", "sign in or present agent credentials");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { LegalLinks } from "@/components/legal-links";
 import { TallyMark } from "@/components/tally-mark";
 
 interface Provider {
@@ -19,6 +20,7 @@ const ERROR_COPY: Record<string, string> = {
   invite_required: "this workspace requires an invite",
   link_disabled: "account linking is disabled on this instance",
   no_workspace: "your account has no workspace — ask an admin for an invite",
+  plan_limit: "this workspace has no free member seats on its plan — ask an admin to free a seat or move to the Team plan",
   auth: "sign-in failed — try again",
 };
 
