@@ -225,6 +225,13 @@
       "when": 1792798254814,
       "tag": "0031_agent_sessions_index",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792805882015,
+      "tag": "0032_delegate_and_linear_l3_l8",
+      "breakpoints": true
     }
   ]
 }
