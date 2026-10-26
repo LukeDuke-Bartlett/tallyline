@@ -42,6 +42,25 @@ their versions match the product.
 
 - **License is now AGPL-3.0-only** (#114; was MIT).
 
+### GlitchTip integration
+
+#### Added
+
+- **Native GlitchTip webhook** (`POST /webhooks/glitchtip/:token`): GlitchTip's
+  own alert payload becomes triage issues through the existing intake pipe,
+  routed to a team by GlitchTip project name. Per-workspace secret (stored
+  hashed, shown once), admin API at `/v1/workspaces/:ws/glitchtip`, a card in
+  Settings > Integrations, and `ops/glitchtip-onboard.py` for one-command
+  Pace/Wisp onboarding. See [docs/glitchtip.md](./docs/glitchtip.md). Needs
+  migration `0033`.
+
+#### Fixed
+
+- Issue relation and suggestion routes were never mounted and returned 404.
+- Workspace export and purge now cover `agent_activities`, `agent_sessions`,
+  `intake_events`, `issue_relations`, `issue_suggestions`, `notifications`,
+  `usage_daily` and `workflow_definitions`.
+
 ### Postgres-only stack
 
 #### Changed (breaking — ops)
