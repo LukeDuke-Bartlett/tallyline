@@ -29,6 +29,7 @@ export const TENANT_TABLES: Record<string, TenantTablePolicy> = {
   dispatch_events: { export: true },
   dispatches: { export: true },
   events: { export: true },
+  glitchtip_integrations: { export: true, redact: ["token_hash"] },
   github_installations: { export: true },
   github_issue_links: { export: true },
   github_repos: { export: true },
