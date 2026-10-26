@@ -1,12 +1,50 @@
 # Changelog
 
 All notable changes to Tallyline (formerly docketry). Format loosely follows
-[Keep a Changelog](https://keepachangelog.com); this project is pre-1.x
-semver until stated otherwise.
+[Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [Unreleased] — Postgres-only stack
+## [2.0.0] — 2026-10-26
 
-### Changed (breaking — ops)
+Major release: breaking ops, authorization, and naming changes (all listed
+below), a Postgres-only stack, and the agent protocol. The npm packages
+`@tallyline/mcp-server` and `@tallyline/cli` jump from 0.1.0 to 2.0.0 so
+their versions match the product.
+
+### Added (since 1.0.0, not itemised below)
+
+- **Agent protocol** (#133, #155): typed agent sessions with ack and idle
+  sweeps, and the complete Linear-teardown agent protocol (L1–L8) over the
+  API and MCP.
+- **Automated intake** (#149): fingerprinted ingest into ranked triage;
+  duplicates fold into the newest live issue.
+- **GlitchTip integration** (#156): `POST /webhooks/glitchtip/:token` with a
+  per-workspace hashed secret, project→team mapping, per-integration rate
+  limits, and intake dedupe. See `docs/glitchtip.md`.
+- **Plan import** (#140, #143, #150): core import with dry-run diff and
+  layered dedupe, `import-plan` CLI, MCP tools, and the skill step.
+- **Accounts and identity** (#90, #111): OAuth and org identity (global
+  users, memberships, SSO, invites, admin surfaces); mailer, password reset,
+  email verification, account deletion, and data export.
+- **Usage metering and entitlements** (#108): `402 PLAN_LIMIT`, plus legal
+  and trust pages.
+- **Agent keys** (#141): revoke, rotate, and default expiry.
+- **Projects, milestones, cycles** (#145, #146, #147): repos bound to
+  projects with synced-issue backfill, issues linked to milestones, seeded
+  `hitl` and `launch-blocker` labels, and weekly cycle auto-scheduling.
+- **Webhook-event retention sweep** (#142) and a shared SSE event poller
+  (#125).
+- **Web**: core UI/UX overhaul (#103, #106, #109, #112), Silver Lining
+  tokens and Appearance settings (#101), edge-state contract and typography
+  (#135), DOM-rendered landing loop (#152), GitHub repo sync settings
+  (#105), CSRF guard on every web write route (#144).
+
+### Changed
+
+- **License is now AGPL-3.0-only** (#114; was MIT).
+
+### Postgres-only stack
+
+#### Changed (breaking — ops)
 
 - **Redis removed.** Nothing consumed it (health ping only). The dev and
   self-host compose files, the e2e stack, CI service containers, and the
@@ -16,9 +54,9 @@ semver until stated otherwise.
   `redis` field is gone. Update any external healthcheck parsers.
 - **Test guard**: `assertSafeTestEnv` now requires only `DATABASE_URL`.
 
-## [Unreleased] — go-live security hardening
+### Go-live security hardening
 
-### Changed (breaking — authorization fixes from the permission matrix)
+#### Changed (breaking — authorization fixes from the permission matrix)
 
 - **Agent keys can no longer approve or send back review items** (PLAN-056):
   `POST /issues/:key/review` and `PATCH` state `in_review → done|in_progress`
@@ -31,7 +69,7 @@ semver until stated otherwise.
   `POST /v1/workspaces/:ws/github/setup`** with body `{"installationId": n}`,
   owner/admin only. GitHub's Setup URL must be a web page that POSTs it.
 
-### Changed (defaults — review before upgrading an internet-facing install)
+#### Changed (defaults — review before upgrading an internet-facing install)
 
 - **`AUTH_AUTO_JOIN_SINGLE_WORKSPACE` now defaults to off** (was on). Set `1`
   to keep the old open-membership behaviour.
@@ -50,7 +88,7 @@ semver until stated otherwise.
   so the real client IP is read from `CF-Connecting-IP` / last
   `X-Forwarded-For` hop.
 
-### Fixed
+#### Fixed
 
 - **Web app redirects no longer leak the upstream Host**: login/OAuth
   callback, logout, and the middleware login redirect previously built
@@ -68,7 +106,7 @@ semver until stated otherwise.
   and project, plus the rendered description body and a "filed by" agent
   attribution with the provenance glint on agent-created ids.
 
-### Added
+#### Added
 
 - **Review-queue nav badge**: `GET /v1/workspaces/:ws/review-queue/count`
   returns the number of `in_review` issues carrying at least one dispatch —
@@ -132,12 +170,12 @@ semver until stated otherwise.
   stay full-size; any column can be pinned collapsed/expanded and the choice
   persists per device (`localStorage`).
 
-## [Unreleased] — renamed: docketry → Tallyline
+### Renamed: docketry → Tallyline
 
 The project is now **Tallyline**. Existing local instances keep working;
 nothing below requires a database migration or re-issuing credentials.
 
-### Migration notes
+#### Migration notes
 
 - **Packages and binaries** — `@docketry/*` → `@tallyline/*`; `docketry` →
   `tallyline`; `docketry-mcp` → `tallyline-mcp`; short alias `dok` → `tly`.
@@ -177,7 +215,7 @@ nothing below requires a database migration or re-issuing credentials.
   to `TALLYLINE_*`, re-mint `dok_` API keys as `tly_`, and expect all
   sessions to sign out once.
 
-### Brand
+#### Brand
 
 - New mark and lockup in `assets/brand/` (four tally strokes struck by an
   azure line, with a dedicated 16px variant); the old docketry card logo
