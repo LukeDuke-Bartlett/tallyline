@@ -204,9 +204,36 @@ age-keygen -o tallyline-backup.key      # prints the PUBLIC key (age1...)
 # store tallyline-backup.key in your password manager / second machine; NOT on the server
 ```
 
-Create an R2 bucket with a **scoped API token** (object read/write on that bucket only)
-and a lifecycle rule (e.g. expire after 35 days; keep monthly copies separately).
-Then nightly (compose stack; container name from `docker ps`):
+Create an R2 bucket with a **scoped API token** (object write on that bucket only —
+no delete or list, so a compromised host cannot erase the off-host copies) and a
+lifecycle rule that keeps the newest 14 daily files (and, if you want, 8 weekly
+copies under a separate prefix). Retention lives in the bucket, not in the timer.
+
+#### Scheduled backups (systemd timer)
+
+`ops/systemd/` ships a oneshot service and a nightly timer (03:17 host-local time,
+`Persistent=true` so a missed night runs at next boot). On the host:
+
+```bash
+# 1. secrets file, root-owned, chmod 600 (see below). Plain KEY=value lines; systemd does
+#    not understand `export` or shell expansion.
+sudo install -m 0600 -o root -g root /dev/null /srv/tallyline/.backup.env
+sudoedit /srv/tallyline/.backup.env
+# 2. install and start the timer (edit WorkingDirectory/paths in the unit if the checkout is not /srv/tallyline)
+sudo cp ops/systemd/tallyline-backup.service ops/systemd/tallyline-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tallyline-backup.timer
+# 3. prove it: run once now, check the log and the healthcheck, then confirm the timer is scheduled
+sudo systemctl start tallyline-backup.service && journalctl -u tallyline-backup.service -n 20 --no-pager
+systemctl list-timers tallyline-backup.timer
+```
+
+The service keeps an encrypted local copy in `/var/backups/tallyline` (the last
+14 days; `BACKUP_OUT_DIR` in `.backup.env` overrides it) as well as the off-host
+upload. `BACKUP_AGE_RECIPIENT` must be the **public** key; `backup.sh` refuses an
+`AGE-SECRET-KEY-` value. Keep the private key on your laptop plus one offline copy.
+
+Prefer cron? The same script works from a crontab line:
 
 ```cron
 17 3 * * * cd /srv/tallyline && set -a && . ./.backup.env && set +a && ./ops/backup.sh >> /var/log/tallyline-backup.log 2>&1
